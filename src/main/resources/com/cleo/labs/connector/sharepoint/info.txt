@@ -1,0 +1,1 @@
+This connector supports Microsoft Sharepoint 2013, 2016, and 365
