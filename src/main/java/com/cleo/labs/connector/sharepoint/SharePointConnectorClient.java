@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 
 import com.cleo.connector.api.ConnectorClient;
 import com.cleo.connector.api.ConnectorException;
@@ -50,12 +51,12 @@ public class SharePointConnectorClient extends ConnectorClient {
     private SharePointConnectorConfig config;
     private Service service;
     private String prefix;
+    private String clientkey;
 
     /**
-     * Constructs a new {@code SharePointConnectorClient} for the schema using
-     * the default config wrapper
+     * Constructs a new {@code SharePointConnectorClient} for the schema
      * 
-     * @param schema the {@code BlobStorageConnectorSchema}
+     * @param schema the {@code SharePointConnectorSchema}
      */
     public SharePointConnectorClient(SharePointConnectorSchema schema) {
         this.config = new SharePointConnectorConfig(this, schema);
@@ -64,21 +65,28 @@ public class SharePointConnectorClient extends ConnectorClient {
     }
 
     /**
-     * Establishes a live container reference from the configuration.
+     * Establishes a {@link Service} reference for the client
      * 
-     * @throws InvalidKeyException
      * @throws ConnectorPropertyException
-     * @throws URISyntaxException
-     * @throws StorageException
      */
     private synchronized void setup() throws ConnectorPropertyException {
         if (service == null) {
             logger.debug("connecting to "+config.getServiceURL()+" as "+config.getUsername());
             service = new Service(config.getServiceURL(), config.getUsername(), config.getPassword());
             prefix = service.getSiteUrl().replaceFirst("[^/]*//[^/]*", "");
+            clientkey = config.getUsername()+"@"+config.getServiceURL();
         }
     }
 
+    /**
+     * Normalizes a path string by prepending "/" if needed, and then
+     * parsing with {@link Paths#get(String, String...)}.  Since an empty
+     * string will have "/" prepended, both "" and "/" result in an empty
+     * parsed paths (with 0 {@link Path#getNameCount()}).  {@link Paths#get(String, String...)}
+     * ignores trailing "/".
+     * @param path a path string
+     * @return a parsed {$link Path} with 0 or more Names
+     */
     private static Path normalize(String path) {
         return Paths.get(path.replaceFirst("^(?=[^/]|$)","/"));
     }
@@ -91,6 +99,7 @@ public class SharePointConnectorClient extends ConnectorClient {
         setup();
 
         if (path.equals(".")) path = ""; // TODO: remove when Harmony is fixed
+        Path normalized = normalize(path);
 
         List<Entry> list = new ArrayList<>();
         for (Folder f : service.getFolders(path)) {
@@ -100,6 +109,7 @@ public class SharePointConnectorClient extends ConnectorClient {
                     .setSize(-1L);
             // --> System.err.println(f.getServerRelativeUrl());
             list.add(entry);
+            AttrCache.put(clientkey, normalized.resolve(Paths.get(f.getName())), new SharePointFolderAttributes(f, logger));
         }
         for (File f : service.getFiles(path)) {
             Entry entry = new Entry(Type.file)
@@ -108,6 +118,7 @@ public class SharePointConnectorClient extends ConnectorClient {
                     .setSize(f.getLength());
             // --> System.err.println(f.getServerRelativeUrl());
             list.add(entry);
+            AttrCache.put(clientkey, normalized.resolve(Paths.get(f.getName())), new SharePointFileAttributes(f, logger));
         }
         return new ConnectorCommandResult(Status.Success, Optional.empty(), list);
     }
@@ -263,16 +274,32 @@ public class SharePointConnectorClient extends ConnectorClient {
         if (path.equals(".")) path = ""; // TODO: remove when Harmony is fixed
         Path normalized = normalize(path);
 
-        Optional<File> file = getFile(normalized);
-        if (file.isPresent()) {
-            return new SharePointFileAttributes(file.get(), logger);
+        Optional<BasicFileAttributeView> attr = Optional.empty();
+        try {
+            attr = AttrCache.get(clientkey, normalized, new Callable<Optional<BasicFileAttributeView>>() {
+                @Override
+                public Optional<BasicFileAttributeView> call() {
+                    logger.debug(String.format("fetching attributes for '%s'", normalized.toString()));
+                    Optional<File> file = getFile(normalized);
+                    if (file.isPresent()) {
+                        return Optional.of(new SharePointFileAttributes(file.get(), logger));
+                    }
+                    Optional<Folder> folder = getFolder(normalized);
+                    if (folder.isPresent()) {
+                        return Optional.of(new SharePointFolderAttributes(folder.get(), logger));
+                    }
+                    return Optional.empty();
+                }
+            });
+        } catch (Exception e) {
+            throw new ConnectorException(String.format("error getting attributes for '%s'", path), e);
         }
-        Optional<Folder> folder = getFolder(normalized);
-        if (folder.isPresent()) {
-            return new SharePointFolderAttributes(folder.get(), logger);
+        if (attr.isPresent()) {
+            return attr.get();
+        } else {
+            throw new ConnectorException(String.format("'%s' does not exist or is not accessible", path),
+                    ConnectorException.Category.fileNonExistentOrNoAccess);
         }
-        throw new ConnectorException(String.format("'%s' does not exist or is not accessible", path),
-                ConnectorException.Category.fileNonExistentOrNoAccess);
     }
 
     @Command(name = DELETE)
@@ -284,6 +311,7 @@ public class SharePointConnectorClient extends ConnectorClient {
 
         try {
             service.deleteFile(prefix+normalized.toString());
+            AttrCache.invalidate(clientkey, normalized);
             return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
         } catch (ServiceException e) {
             throw new ConnectorException(String.format("'%s' does not exist or is not accessible", path),
@@ -317,6 +345,7 @@ public class SharePointConnectorClient extends ConnectorClient {
 
         try {
             service.deleteFolder(prefix+normalized.toString());
+            AttrCache.invalidate(clientkey, normalized);
             return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
         } catch (ServiceException e) {
             throw new ConnectorException("RMDIR cannot delete folder "+path, e);

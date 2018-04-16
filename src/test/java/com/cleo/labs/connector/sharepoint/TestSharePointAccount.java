@@ -79,12 +79,15 @@ public class TestSharePointAccount {
             client.getAttributes("not a real file");
             fail("this file should not exist");
         } catch (ConnectorException e) {
-            assertEquals(ConnectorException.Category.fileNonExistentOrNoAccess, e.getCategory().get());
+            assertEquals(ConnectorException.Category.fileNonExistentOrNoAccess, e.getCategory().orElse(null));
         }
 
         BasicFileAttributeView docs = client.getAttributes("Documents");
         assertTrue(docs.readAttributes().isDirectory());
 
+        // this should cause the details to be cached
+        Commands.dir("Documents").go(client);
+        // so this should fetch from cache -- to really test this need to inspect the debug output
         BasicFileAttributeView file = client.getAttributes("Documents/library.pptx");
         assertTrue(file.readAttributes().isRegularFile());
 

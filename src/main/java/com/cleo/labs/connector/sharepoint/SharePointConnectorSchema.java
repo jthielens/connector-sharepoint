@@ -23,18 +23,21 @@ public class SharePointConnectorSchema extends ConnectorConfig {
     final IConnectorProperty<String> serviceURL = new PropertyBuilder<>("SharePointURL", "")
             .setDescription("The SharePoint service URL.")
             .setRequired(true)
+            .setAllowedInSetCommand(false)
             .build();
 
     @Property
     final IConnectorProperty<String> username = new PropertyBuilder<>("UserName", "")
             .setDescription("The SharePoint user name.")
             .setRequired(true)
+            .setAllowedInSetCommand(false)
             .build();
 
     @Property
     final IConnectorProperty<String> password = new PropertyBuilder<>("Password", "")
             .setDescription("The user's password.")
             .setRequired(true)
+            .setAllowedInSetCommand(false)
             .addAttribute(Attribute.Password)
             .build();
 
