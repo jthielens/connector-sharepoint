@@ -181,25 +181,27 @@ public class SharePointConnectorClient extends ConnectorClient {
         boolean unique = ConnectorCommandUtil.isOptionOn(put.getOptions(), Unique);
 
         try {
-            if (unique) {
-                Optional<File> test = getFile(normalized);
-                if (test.isPresent()) {
-                    Path parent = normalized.getParent();
-                    String fn = normalized.getFileName().toString();
-                    int counter = 0;
-                    String ext = FilenameUtils.getExtension(fn).replaceFirst("^(?=[^\\.])","."); // prefix with "." unless empty or already "."
-                    String base = fn.substring(0, fn.length()-ext.length());
-                    Path candidate;
+            Optional<File> test = getFile(normalized);
+            if (unique && test.isPresent()) {
+                Path parent = normalized.getParent();
+                String fn = normalized.getFileName().toString();
+                int counter = 0;
+                String ext = FilenameUtils.getExtension(fn).replaceFirst("^(?=[^\\.])","."); // prefix with "." unless empty or already "."
+                String base = fn.substring(0, fn.length()-ext.length());
+                Path candidate;
 
-                    do {
-                        counter++;
-                        candidate = parent.resolve(base+"."+counter+ext);
-                        test = getFile(candidate);
-                    } while (test.isPresent());
-                    normalized = candidate;
-                }
+                do {
+                    counter++;
+                    candidate = parent.resolve(base+"."+counter+ext);
+                    test = getFile(candidate);
+                } while (test.isPresent());
+                normalized = candidate;
             }
-            service.createFile(prefix+normalized.toString(), put.getSource().getStream());
+            if (test.isPresent()) {
+                service.updateFileContent(prefix+normalized.toString(), put.getSource().getStream());
+            } else {
+                service.createFile(prefix+normalized.toString(), put.getSource().getStream());
+            }
             return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
         } catch (ServiceException e) {
             System.err.println("Error Message: " + e.getMessage());
