@@ -6,6 +6,7 @@ import static com.cleo.connector.api.command.ConnectorCommandName.DIR;
 import static com.cleo.connector.api.command.ConnectorCommandName.GET;
 import static com.cleo.connector.api.command.ConnectorCommandName.MKDIR;
 import static com.cleo.connector.api.command.ConnectorCommandName.PUT;
+import static com.cleo.connector.api.command.ConnectorCommandName.RENAME;
 import static com.cleo.connector.api.command.ConnectorCommandName.RMDIR;
 import static com.cleo.connector.api.command.ConnectorCommandOption.Delete;
 import static com.cleo.connector.api.command.ConnectorCommandOption.Unique;
@@ -44,6 +45,7 @@ import com.cleo.connector.api.property.ConnectorPropertyException;
 import com.google.common.base.Strings;
 import com.independentsoft.share.File;
 import com.independentsoft.share.Folder;
+import com.independentsoft.share.MoveOperation;
 import com.independentsoft.share.Service;
 import com.independentsoft.share.ServiceException;
 import com.independentsoft.share.queryoptions.Filter;
@@ -369,6 +371,32 @@ public class SharePointConnectorClient extends ConnectorClient {
             return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
         } catch (ServiceException e) {
             throw new ConnectorException("RMDIR cannot delete folder "+path, e);
+        }
+    }
+
+    @Command(name = RENAME)
+    public ConnectorCommandResult rename(OtherCommand rename) throws ConnectorException {
+        String source = rename.getSource();
+        String destination = rename.getDestination();
+        logger.debug(String.format("RENAME '%s' '%s'", source, destination));
+        setup();
+        Path sourcePath = normalize(source);
+        Path destinationPath = normalize(destination);
+
+        Optional<File> sourceFile = getFile(sourcePath);
+        try {
+            if (sourceFile.isPresent()) {
+                if (service.moveFile(prefix+sourcePath.toString(), prefix+destinationPath.toString(), MoveOperation.OVERWRITE)) {
+                    return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
+                } else {
+                    return new ConnectorCommandResult(Status.Error, String.format("RENAME '%s' '%s' failed.", source, destination));
+                }
+            } else {
+                throw new ConnectorException(String.format("'%s' does not exist or is not accessible", source),
+                        ConnectorException.Category.fileNonExistentOrNoAccess);
+            }
+        } catch (ServiceException e) {
+            throw new ConnectorException(String.format("RENAME cannot rename '%s' to '%s'", source, destination), e);
         }
     }
 }

@@ -272,4 +272,71 @@ public class TestSharePointAccount {
         result = Commands.rmdir(path).go(client);
         assertEquals(Status.Success, result.getStatus());
     }
+
+    @Test
+    public void testRename() {
+        SharePointConnectorClient client = setupClient();
+        ConnectorCommandResult result;
+        String container = "Documents";
+        String random = UUID.randomUUID().toString();
+        String path = container+"/"+random;
+        List<Entry> entries;
+
+        // make a new folder for the test
+        String TEST = "test.txt";
+        result = Commands.mkdir(path).go(client);
+        assertEquals(Status.Success, result.getStatus());
+
+        // put the first file
+        StringSource source;
+        source = new StringSource(TEST, "initial content");
+        result = Commands.put(source, path+"/"+TEST).go(client);
+        assertEquals(Status.Success, result.getStatus());
+
+        // one file now
+        result = Commands.dir(path).go(client);
+        assertEquals(Status.Success, result.getStatus());
+        entries = result.getDirEntries().orElse(Collections.emptyList());
+        assertEquals(1, entries.size());
+        entries.forEach((e) -> System.err.println("pass 1: "+e));
+
+        // rename it
+        result = Commands.rename(path+"/"+TEST, path+"/"+TEST+".rename").go(client);
+        assertEquals(Status.Success, result.getStatus());
+
+        // still one file
+        result = Commands.dir(path).go(client);
+        assertEquals(Status.Success, result.getStatus());
+        entries = result.getDirEntries().orElse(Collections.emptyList());
+        assertEquals(1, entries.size());
+        assertEquals(TEST+".rename", entries.get(0).getPath());
+        entries.forEach((e) -> System.err.println("pass 2: "+e));
+
+        // put the second file
+        source = new StringSource(TEST, StringSource.lorem);
+        result = Commands.put(source, path+"/"+TEST).go(client);
+        assertEquals(Status.Success, result.getStatus());
+
+        // rename it (overwrite)
+        result = Commands.rename(path+"/"+TEST, path+"/"+TEST+".rename").go(client);
+        assertEquals(Status.Success, result.getStatus());
+
+        // still one file
+        result = Commands.dir(path).go(client);
+        assertEquals(Status.Success, result.getStatus());
+        entries = result.getDirEntries().orElse(Collections.emptyList());
+        assertEquals(1, entries.size());
+        assertEquals(TEST+".rename", entries.get(0).getPath());
+        entries.forEach((e) -> System.err.println("pass 3: "+e));
+
+        // should be the new content
+        StringCollector destination = new StringCollector().name(TEST);
+        result = Commands.get(path+"/"+TEST+".rename", destination).go(client);
+        assertEquals(Status.Success, result.getStatus());
+        assertEquals(StringSource.lorem, destination.toString());
+
+        // cleanup the testing folder
+        result = Commands.rmdir(path).go(client);
+        assertEquals(Status.Success, result.getStatus());
+    }
 }

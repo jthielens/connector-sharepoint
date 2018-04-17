@@ -5,6 +5,7 @@ import static com.cleo.connector.api.command.ConnectorCommandName.DIR;
 import static com.cleo.connector.api.command.ConnectorCommandName.GET;
 import static com.cleo.connector.api.command.ConnectorCommandName.MKDIR;
 import static com.cleo.connector.api.command.ConnectorCommandName.PUT;
+import static com.cleo.connector.api.command.ConnectorCommandName.RENAME;
 import static com.cleo.connector.api.command.ConnectorCommandName.RMDIR;
 
 import java.lang.reflect.InvocationTargetException;
@@ -57,6 +58,10 @@ public class Commands {
 
     static public Rmdir rmdir(String path) {
         return new Rmdir().source(path);
+    }
+
+    static public Rename rename(String source, String destination) {
+        return new Rename().source(source).destination(destination);
     }
 
     static private ConnectorCommandResult run(ConnectorClient client, ConnectorCommandName name, Object command) {
@@ -227,6 +232,27 @@ public class Commands {
             OtherCommand command = new OtherCommand(RMDIR.name(), NO_OPTIONS, source, NO_DESTINATION, NO_PARAMETERS,
                     RMDIR.name() + " " + source);
             return run(client, RMDIR, command);
+        }
+    }
+
+    static public class Rename {
+        private String source = null;
+        private String destination = null;
+
+        public Rename source(String source) {
+            this.source = source;
+            return this;
+        }
+
+        public Rename destination(String destination) {
+            this.destination = destination;
+            return this;
+        }
+
+        public ConnectorCommandResult go(ConnectorClient client) {
+            OtherCommand command = new OtherCommand(RENAME.name(), NO_OPTIONS, source, destination, NO_PARAMETERS,
+                    RENAME.name() + " " + source + " " + destination);
+            return run(client, RENAME, command);
         }
     }
 }
