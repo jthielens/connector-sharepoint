@@ -23,11 +23,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
+import org.apache.commons.io.FilenameUtils;
+
 import com.cleo.connector.api.ConnectorClient;
 import com.cleo.connector.api.ConnectorException;
 import com.cleo.connector.api.annotations.Command;
 import com.cleo.connector.api.command.ConnectorCommandResult;
 import com.cleo.connector.api.command.ConnectorCommandResult.Status;
+import com.cleo.connector.api.command.ConnectorCommandUtil;
 import com.cleo.connector.api.command.DirCommand;
 import com.cleo.connector.api.command.GetCommand;
 import com.cleo.connector.api.command.OtherCommand;
@@ -107,7 +110,6 @@ public class SharePointConnectorClient extends ConnectorClient {
                     .setPath(f.getName())
                     .setDate(Attributes.toLocalDateTime(f.getLastModifiedTime()))
                     .setSize(-1L);
-            // --> System.err.println(f.getServerRelativeUrl());
             list.add(entry);
             AttrCache.put(clientkey, normalized.resolve(Paths.get(f.getName())), new SharePointFolderAttributes(f, logger));
         }
@@ -116,7 +118,6 @@ public class SharePointConnectorClient extends ConnectorClient {
                     .setPath(f.getName())
                     .setDate(Attributes.toLocalDateTime(f.getLastModifiedTime()))
                     .setSize(f.getLength());
-            // --> System.err.println(f.getServerRelativeUrl());
             list.add(entry);
             AttrCache.put(clientkey, normalized.resolve(Paths.get(f.getName())), new SharePointFileAttributes(f, logger));
         }
@@ -177,10 +178,27 @@ public class SharePointConnectorClient extends ConnectorClient {
         setup();
         Path normalized = normalize(path);
 
-        // boolean unique = ConnectorCommandUtil.isOptionOn(put.getOptions(), Unique);
+        boolean unique = ConnectorCommandUtil.isOptionOn(put.getOptions(), Unique);
 
         try {
-            // TODO: implement Unique
+            if (unique) {
+                Optional<File> test = getFile(normalized);
+                if (test.isPresent()) {
+                    Path parent = normalized.getParent();
+                    String fn = normalized.getFileName().toString();
+                    int counter = 0;
+                    String ext = FilenameUtils.getExtension(fn).replaceFirst("^(?=[^\\.])","."); // prefix with "." unless empty or already "."
+                    String base = fn.substring(0, fn.length()-ext.length());
+                    Path candidate;
+
+                    do {
+                        counter++;
+                        candidate = parent.resolve(base+"."+counter+ext);
+                        test = getFile(candidate);
+                    } while (test.isPresent());
+                    normalized = candidate;
+                }
+            }
             service.createFile(prefix+normalized.toString(), put.getSource().getStream());
             return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
         } catch (ServiceException e) {

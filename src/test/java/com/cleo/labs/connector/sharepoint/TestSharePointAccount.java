@@ -13,6 +13,7 @@ import org.junit.Test;
 
 import com.cleo.connector.api.ConnectorException;
 import com.cleo.connector.api.command.ConnectorCommandName;
+import com.cleo.connector.api.command.ConnectorCommandOption;
 import com.cleo.connector.api.command.ConnectorCommandResult;
 import com.cleo.connector.api.command.ConnectorCommandResult.Status;
 import com.cleo.connector.api.directory.Entry;
@@ -178,4 +179,47 @@ public class TestSharePointAccount {
         assertFalse(entries.stream().anyMatch((e) -> e.getPath().equals(random)));
     }
 
+    @Test
+    public void testPutUnique() {
+        SharePointConnectorClient client = setupClient();
+        ConnectorCommandResult result;
+        String container = "Documents";
+        String random = UUID.randomUUID().toString();
+        String path = container+"/"+random;
+        List<Entry> entries;
+
+        // make a new folder for the test
+        String TEST = "test.txt";
+        result = Commands.mkdir(path).go(client);
+        assertEquals(Status.Success, result.getStatus());
+
+        // put the first file
+        StringSource source;
+        source = new StringSource(TEST, StringSource.lorem);
+        result = Commands.put(source, path+"/"+TEST).go(client);
+        assertEquals(Status.Success, result.getStatus());
+
+        // one file now
+        result = Commands.dir(path).go(client);
+        assertEquals(Status.Success, result.getStatus());
+        entries = result.getDirEntries().orElse(Collections.emptyList());
+        assertEquals(1, entries.size());
+        entries.forEach((e) -> System.err.println("pass 1: "+e));
+
+        // put the second file
+        source = new StringSource(TEST, StringSource.lorem);
+        result = Commands.put(source, path+"/"+TEST).option(ConnectorCommandOption.Unique).go(client);
+        assertEquals(Status.Success, result.getStatus());
+
+        // two files now
+        result = Commands.dir(path).go(client);
+        assertEquals(Status.Success, result.getStatus());
+        entries = result.getDirEntries().orElse(Collections.emptyList());
+        assertEquals(2, entries.size());
+        entries.forEach((e) -> System.err.println("pass 2: "+e));
+
+        // cleanup the testing folder
+        result = Commands.rmdir(path).go(client);
+        assertEquals(Status.Success, result.getStatus());
+    }
 }
