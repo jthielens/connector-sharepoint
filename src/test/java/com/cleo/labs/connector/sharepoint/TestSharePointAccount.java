@@ -1,8 +1,10 @@
 package com.cleo.labs.connector.sharepoint;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
-import java.io.IOException;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.util.Collections;
 import java.util.List;
@@ -11,6 +13,7 @@ import java.util.UUID;
 import org.junit.Ignore;
 import org.junit.Test;
 
+import com.cleo.connector.api.ConnectorClient;
 import com.cleo.connector.api.ConnectorException;
 import com.cleo.connector.api.command.ConnectorCommandName;
 import com.cleo.connector.api.command.ConnectorCommandOption;
@@ -18,49 +21,37 @@ import com.cleo.connector.api.command.ConnectorCommandResult;
 import com.cleo.connector.api.command.ConnectorCommandResult.Status;
 import com.cleo.connector.api.directory.Entry;
 import com.cleo.connector.api.property.CommonProperty;
-import com.cleo.connector.shell.interfaces.IConnector;
-import com.cleo.connector.shell.interfaces.IConnectorHost;
 import com.cleo.labs.connector.testing.Commands;
 import com.cleo.labs.connector.testing.StringCollector;
 import com.cleo.labs.connector.testing.StringSource;
-import com.cleo.labs.connector.testing.TestConnector;
-import com.cleo.labs.connector.testing.TestConnectorHost;
-import com.independentsoft.share.ServiceException;
+import com.cleo.labs.connector.testing.TestConnectorClient;
 
 public class TestSharePointAccount {
 
-    private static SharePointConnectorClient setupClient() {
-        SharePointConnectorSchema sharePointSchema = new SharePointConnectorSchema();
-        sharePointSchema.setup();
-        IConnector connector = new TestConnector(System.err)
-                .set("SharePointURL", TestConfigValues.URL)
-                .set("UserName", TestConfigValues.USERNAME)
-                .set("Password", TestConfigValues.PASSWORD)
-                .set(CommonProperty.EnableDebug.name(), Boolean.TRUE.toString());
-        SharePointConnectorClient client = new SharePointConnectorClient(sharePointSchema);
-        IConnectorHost connectorHost = new TestConnectorHost(client);
-        client.setup(connector, sharePointSchema, connectorHost);
-
-        return client;
-    }
-
-    @Ignore
     @Test
-    public void testTestConnectorHost() {
-        SharePointConnectorClient client = setupClient();
+    public void testTestConnectorHost() throws Exception {
+        ConnectorClient client = TestConnectorClient.of(SharePointConnectorSchema.class)
+                .logger(System.err)
+                .debug(true)
+                .values(TestConfigValues.class)
+                .build();
         assertEquals("sharept", client.getHost().getSchemeName());
-        assertFalse(client.getHost().isSupported(ConnectorCommandName.DELETE));
+        assertTrue(client.getHost().isSupported(ConnectorCommandName.DELETE));
         assertFalse(client.getHost().isSupported(ConnectorCommandName.CONNECT));
         assertFalse(client.getHost().isSupported("no such thing"));
         assertTrue(client.getHost().isSupported("DIR"));
-        assertEquals(TestConfigValues.URL, client.getHost().getPropertyValue("SharePointURL").orElse(""));
+        assertEquals(TestConfigValues.SharePointURL, client.getHost().getPropertyValue("SharePointURL").orElse(""));
         assertEquals("true", client.getHost().getPropertyValue(CommonProperty.EnableDebug.name()).orElse(""));
     }
 
     @Ignore
     @Test
-    public void testDir() {
-        SharePointConnectorClient client = setupClient();
+    public void testDir() throws Exception {
+        ConnectorClient client = TestConnectorClient.of(SharePointConnectorSchema.class)
+                .logger(System.err)
+                .debug(true)
+                .values(TestConfigValues.class)
+                .build();
         ConnectorCommandResult result;
 
         result = Commands.dir("").go(client);
@@ -73,51 +64,38 @@ public class TestSharePointAccount {
     }
 
     @Test
-    public void testAttrs() throws ServiceException, ConnectorException, IOException {
-        SharePointConnectorClient client = setupClient();
+    public void testAttrs() throws Exception {
+        ConnectorClient client = TestConnectorClient.of(SharePointConnectorSchema.class)
+                .logger(System.err)
+                .debug(true)
+                .values(TestConfigValues.class)
+                .build();
 
         try {
-            client.getAttributes("not a real file");
+            Commands.attr("not a real file").go(client);
             fail("this file should not exist");
         } catch (ConnectorException e) {
             assertEquals(ConnectorException.Category.fileNonExistentOrNoAccess, e.getCategory().orElse(null));
         }
 
-        BasicFileAttributeView docs = client.getAttributes("Documents");
+        BasicFileAttributeView docs = Commands.attr("Documents").go(client);
         assertTrue(docs.readAttributes().isDirectory());
 
         // this should cause the details to be cached
         Commands.dir("Documents").go(client);
         // so this should fetch from cache -- to really test this need to inspect the debug output
-        BasicFileAttributeView file = client.getAttributes("Documents/library.pptx");
+        BasicFileAttributeView file = Commands.attr("Documents/library.pptx").go(client);
         assertTrue(file.readAttributes().isRegularFile());
 
     }
 
-    @Ignore
-    @Test
-    public void testCreateContainer() {
-        SharePointConnectorClient client = setupClient();
-        ConnectorCommandResult result;
-
-        String container = "container-"+UUID.randomUUID().toString();
-        // make a new container
-        result = Commands.mkdir(container).go(client);
-        assertEquals(Status.Success, result.getStatus());
-        // make it again -- it's existing, but still should be ok
-        result = Commands.mkdir(container).go(client);
-        assertEquals(Status.Success, result.getStatus());
-        // now delete it
-        result = Commands.rmdir(container).go(client);
-        assertEquals(Status.Success, result.getStatus());
-        // delete it (non existing) should also be ok
-        result = Commands.rmdir(container).go(client);
-        assertEquals(Status.Success, result.getStatus());
-    }
-
     @Test
     public void testRoundTrip() throws Exception {
-        SharePointConnectorClient client = setupClient();
+        ConnectorClient client = TestConnectorClient.of(SharePointConnectorSchema.class)
+                .logger(System.err)
+                .debug(true)
+                .values(TestConfigValues.class)
+                .build();
         ConnectorCommandResult result;
 
         String container = "Documents";
@@ -150,7 +128,11 @@ public class TestSharePointAccount {
 
     @Test
     public void testMkdirRoundTrip() throws Exception {
-        SharePointConnectorClient client = setupClient();
+        ConnectorClient client = TestConnectorClient.of(SharePointConnectorSchema.class)
+                .logger(System.err)
+                .debug(true)
+                .values(TestConfigValues.class)
+                .build();
         ConnectorCommandResult result;
 
         String container = "Documents";
@@ -180,8 +162,12 @@ public class TestSharePointAccount {
     }
 
     @Test
-    public void testPutUnique() {
-        SharePointConnectorClient client = setupClient();
+    public void testPutUnique() throws Exception {
+        ConnectorClient client = TestConnectorClient.of(SharePointConnectorSchema.class)
+                .logger(System.err)
+                .debug(true)
+                .values(TestConfigValues.class)
+                .build();
         ConnectorCommandResult result;
         String container = "Documents";
         String random = UUID.randomUUID().toString();
@@ -224,8 +210,12 @@ public class TestSharePointAccount {
     }
 
     @Test
-    public void testPutOverwrite() {
-        SharePointConnectorClient client = setupClient();
+    public void testPutOverwrite() throws Exception {
+        ConnectorClient client = TestConnectorClient.of(SharePointConnectorSchema.class)
+                .logger(System.err)
+                .debug(true)
+                .values(TestConfigValues.class)
+                .build();
         ConnectorCommandResult result;
         String container = "Documents";
         String random = UUID.randomUUID().toString();
@@ -274,8 +264,12 @@ public class TestSharePointAccount {
     }
 
     @Test
-    public void testRename() {
-        SharePointConnectorClient client = setupClient();
+    public void testRename() throws Exception {
+        ConnectorClient client = TestConnectorClient.of(SharePointConnectorSchema.class)
+                .logger(System.err)
+                .debug(true)
+                .values(TestConfigValues.class)
+                .build();
         ConnectorCommandResult result;
         String container = "Documents";
         String random = UUID.randomUUID().toString();

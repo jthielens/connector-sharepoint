@@ -2,6 +2,7 @@ package com.cleo.labs.connector.testing;
 
 import java.io.File;
 import java.io.PrintStream;
+import java.lang.reflect.Field;
 
 import com.cleo.connector.api.interfaces.IConnectorFile;
 import com.cleo.connector.shell.interfaces.IConnector;
@@ -22,6 +23,19 @@ public class TestConnector implements IConnector {
 
     public TestConnector set(String key, String value) {
         this.action.set(key, value);
+        return this;
+    }
+
+    public TestConnector set(Class<?> clazz) {
+        for (Field f : clazz.getDeclaredFields()) {
+            if (f.getType().isAssignableFrom(String.class)) {
+                try {
+                    this.action.set(f.getName(), f.get(null).toString());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
         return this;
     }
 
