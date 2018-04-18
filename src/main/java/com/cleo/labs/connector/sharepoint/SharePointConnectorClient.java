@@ -77,7 +77,11 @@ public class SharePointConnectorClient extends ConnectorClient {
     private synchronized void setup() throws ConnectorPropertyException {
         if (service == null) {
             logger.debug("connecting to "+config.getServiceURL()+" as "+config.getUsername());
-            service = new Service(config.getServiceURL(), config.getUsername(), config.getPassword());
+            if (Strings.isNullOrEmpty(config.getDomain())) {
+                service = new Service(config.getServiceURL(), config.getUsername(), config.getPassword());
+            } else {
+                service = new Service(config.getServiceURL(), config.getUsername(), config.getPassword(), config.getDomain());
+            }
             prefix = service.getSiteUrl().replaceFirst("[^/]*//[^/]*", "");
             clientkey = config.getUsername()+"@"+config.getServiceURL();
         }

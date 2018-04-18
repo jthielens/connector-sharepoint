@@ -58,4 +58,13 @@ public class SharePointConnectorConfig {
         return schema.password.getValue(client);
     }
 
+    /**
+     * Gets the Domain property
+     * @return the Domain
+     * @throws ConnectorPropertyException
+     */
+    public String getDomain() throws ConnectorPropertyException {
+        return schema.domain.getValue(client);
+    }
+
 }

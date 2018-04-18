@@ -42,6 +42,13 @@ public class SharePointConnectorSchema extends ConnectorConfig {
             .build();
 
     @Property
+    final IConnectorProperty<String> domain = new PropertyBuilder<>("Domain", "")
+            .setDescription("The user's domain (optional).")
+            .setRequired(false)
+            .setAllowedInSetCommand(false)
+            .build();
+
+    @Property
     final IConnectorProperty<Boolean> enableDebug = CommonProperties.of(CommonProperty.EnableDebug);
 
     @Info
