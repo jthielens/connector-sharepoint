@@ -303,7 +303,7 @@ public class TestSharePointAccount {
         assertEquals(Status.Success, result.getStatus());
         entries = result.getDirEntries().orElse(Collections.emptyList());
         assertEquals(1, entries.size());
-        assertEquals(TEST+".rename", entries.get(0).getPath());
+        assertEquals(path+"/"+TEST+".rename", entries.get(0).getPath());
         entries.forEach((e) -> System.err.println("pass 2: "+e));
 
         // put the second file
@@ -320,7 +320,7 @@ public class TestSharePointAccount {
         assertEquals(Status.Success, result.getStatus());
         entries = result.getDirEntries().orElse(Collections.emptyList());
         assertEquals(1, entries.size());
-        assertEquals(TEST+".rename", entries.get(0).getPath());
+        assertEquals(path+"/"+TEST+".rename", entries.get(0).getPath());
         entries.forEach((e) -> System.err.println("pass 3: "+e));
 
         // should be the new content

@@ -79,11 +79,12 @@ public class SharePointConnectorClient extends ConnectorClient {
             logger.debug("connecting to "+config.getServiceURL()+" as "+config.getUsername());
             if (Strings.isNullOrEmpty(config.getDomain())) {
                 service = new Service(config.getServiceURL(), config.getUsername(), config.getPassword());
+                clientkey = config.getUsername()+"@"+config.getServiceURL();
             } else {
                 service = new Service(config.getServiceURL(), config.getUsername(), config.getPassword(), config.getDomain());
+                clientkey = config.getUsername()+"@"+config.getDomain()+"@"+config.getServiceURL();
             }
             prefix = service.getSiteUrl().replaceFirst("[^/]*//[^/]*", "");
-            clientkey = config.getUsername()+"@"+config.getServiceURL();
         }
     }
 
@@ -113,7 +114,7 @@ public class SharePointConnectorClient extends ConnectorClient {
         List<Entry> list = new ArrayList<>();
         for (Folder f : service.getFolders(path)) {
             Entry entry = new Entry(Type.dir)
-                    .setPath(f.getName())
+                    .setPath(normalized.resolve(f.getName()).toString().substring(1))
                     .setDate(Attributes.toLocalDateTime(f.getLastModifiedTime()))
                     .setSize(-1L);
             list.add(entry);
@@ -121,7 +122,7 @@ public class SharePointConnectorClient extends ConnectorClient {
         }
         for (File f : service.getFiles(path)) {
             Entry entry = new Entry(Type.file)
-                    .setPath(f.getName())
+                    .setPath(normalized.resolve(f.getName()).toString().substring((1)))
                     .setDate(Attributes.toLocalDateTime(f.getLastModifiedTime()))
                     .setSize(f.getLength());
             list.add(entry);
