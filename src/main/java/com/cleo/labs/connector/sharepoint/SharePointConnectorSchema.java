@@ -1,5 +1,7 @@
 package com.cleo.labs.connector.sharepoint;
 
+import static com.cleo.connector.api.property.CommonPropertyGroups.Connect;
+
 import java.io.IOException;
 
 import com.cleo.connector.api.ConnectorConfig;
@@ -22,6 +24,7 @@ public class SharePointConnectorSchema extends ConnectorConfig {
     @Property
     final IConnectorProperty<String> serviceURL = new PropertyBuilder<>("SharePointURL", "")
             .setDescription("The SharePoint service URL.")
+            .setGroup(Connect)
             .setRequired(true)
             .setAllowedInSetCommand(false)
             .build();
@@ -29,6 +32,7 @@ public class SharePointConnectorSchema extends ConnectorConfig {
     @Property
     final IConnectorProperty<String> username = new PropertyBuilder<>("UserName", "")
             .setDescription("The SharePoint user name.")
+            .setGroup(Connect)
             .setRequired(true)
             .setAllowedInSetCommand(false)
             .build();
@@ -36,6 +40,7 @@ public class SharePointConnectorSchema extends ConnectorConfig {
     @Property
     final IConnectorProperty<String> password = new PropertyBuilder<>("Password", "")
             .setDescription("The user's password.")
+            .setGroup(Connect)
             .setRequired(true)
             .setAllowedInSetCommand(false)
             .addAttribute(Attribute.Password)
@@ -44,9 +49,25 @@ public class SharePointConnectorSchema extends ConnectorConfig {
     @Property
     final IConnectorProperty<String> domain = new PropertyBuilder<>("Domain", "")
             .setDescription("The user's domain (optional).")
+            .setGroup(Connect)
             .setRequired(false)
             .setAllowedInSetCommand(false)
             .build();
+
+    @Property
+    final IConnectorProperty<Integer> commandRetries = CommonProperties.of(CommonProperty.CommandRetries);
+
+    @Property
+    final IConnectorProperty<Integer> commandRetryDelay = CommonProperties.of(CommonProperty.CommandRetryDelay);
+
+    @Property
+    final IConnectorProperty<Boolean> doNotSendZeroLengthFiles = CommonProperties.of(CommonProperty.DoNotSendZeroLengthFiles);
+
+    @Property
+    final IConnectorProperty<Boolean> deleteReceivedZeroLengthFiles = CommonProperties.of(CommonProperty.DeleteReceivedZeroLengthFiles);
+
+    @Property
+    final IConnectorProperty<String> retrieveDirectorySort = CommonProperties.of(CommonProperty.RetrieveDirectorySort);
 
     @Property
     final IConnectorProperty<Boolean> enableDebug = CommonProperties.of(CommonProperty.EnableDebug);
