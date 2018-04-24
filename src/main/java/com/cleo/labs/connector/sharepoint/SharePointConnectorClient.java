@@ -14,8 +14,6 @@ import static com.cleo.connector.api.command.ConnectorCommandOption.Unique;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.security.InvalidKeyException;
 import java.util.ArrayList;
@@ -88,63 +86,50 @@ public class SharePointConnectorClient extends ConnectorClient {
         }
     }
 
-    /**
-     * Normalizes a path string by prepending "/" if needed, and then
-     * parsing with {@link Paths#get(String, String...)}.  Since an empty
-     * string will have "/" prepended, both "" and "/" result in an empty
-     * parsed paths (with 0 {@link Path#getNameCount()}).  {@link Paths#get(String, String...)}
-     * ignores trailing "/".
-     * @param path a path string
-     * @return a parsed {$link Path} with 0 or more Names
-     */
-    private static Path normalize(String path) {
-        return Paths.get(path.replaceFirst("^(?=[^/]|$)","/"));
-    }
-
     @Command(name = DIR)
     public ConnectorCommandResult dir(DirCommand dir) throws ConnectorPropertyException, ServiceException {
-        String path = dir.getSource().getPath();
+        String source = dir.getSource().getPath();
 
-        logger.debug(String.format("DIR '%s'", path));
+        logger.debug(String.format("DIR '%s'", source));
         setup();
 
-        if (path.equals(".")) path = ""; // TODO: remove when Harmony is fixed
-        Path normalized = normalize(path);
+        if (source.equals(".")) source = ""; // TODO: remove when Harmony is fixed
+        Path sourcePath = new Path(source);
 
         List<Entry> list = new ArrayList<>();
-        for (Folder f : service.getFolders(path)) {
+        for (Folder f : service.getFolders(source)) {
             Entry entry = new Entry(Type.dir)
-                    .setPath(normalized.resolve(f.getName()).toString().substring(1))
+                    .setPath(sourcePath.child(f.getName()).toString())
                     .setDate(Attributes.toLocalDateTime(f.getLastModifiedTime()))
                     .setSize(-1L);
             list.add(entry);
-            AttrCache.put(clientkey, normalized.resolve(Paths.get(f.getName())), new SharePointFolderAttributes(f, logger));
+            AttrCache.put(clientkey, sourcePath.child(f.getName()), new SharePointFolderAttributes(f, logger));
         }
-        for (File f : service.getFiles(path)) {
+        for (File f : service.getFiles(source)) {
             Entry entry = new Entry(Type.file)
-                    .setPath(normalized.resolve(f.getName()).toString().substring((1)))
+                    .setPath(sourcePath.child(f.getName()).toString())
                     .setDate(Attributes.toLocalDateTime(f.getLastModifiedTime()))
                     .setSize(f.getLength());
             list.add(entry);
-            AttrCache.put(clientkey, normalized.resolve(Paths.get(f.getName())), new SharePointFileAttributes(f, logger));
+            AttrCache.put(clientkey, sourcePath.child(f.getName()), new SharePointFileAttributes(f, logger));
         }
         return new ConnectorCommandResult(Status.Success, Optional.empty(), list);
     }
 
     @Command(name = GET, options = { Delete })
     public ConnectorCommandResult get(GetCommand get) throws ConnectorException, IOException {
-        String path = get.getSource().getPath();
+        String source = get.getSource().getPath();
         IConnectorIncoming destination = get.getDestination();
 
-        logger.debug(String.format("GET remote '%s' to local '%s'", path, destination.getPath()));
+        logger.debug(String.format("GET remote '%s' to local '%s'", source, destination.getPath()));
         setup();
-        Path normalized = normalize(path);
+        Path sourcePath = new Path(source);
 
-        try (InputStream is = service.getFileStream(prefix+normalized.toString())) {
+        try (InputStream is = service.getFileStream(prefix+sourcePath.toString())) {
             transfer(is, destination.getStream(), true);
             return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
         } catch (ServiceException e) {
-            throw new ConnectorException(String.format("'%s' does not exist or is not accessible", path),
+            throw new ConnectorException(String.format("'%s' does not exist or is not accessible", source),
                     ConnectorException.Category.fileNonExistentOrNoAccess);
         }
     }
@@ -176,22 +161,22 @@ public class SharePointConnectorClient extends ConnectorClient {
 
     @Command(name = PUT, options = { Unique, Delete })
     public ConnectorCommandResult put(PutCommand put) throws ConnectorException {
-        String path = put.getDestination().getPath();
+        String destination = put.getDestination().getPath();
         IConnectorOutgoing source = put.getSource();
         String filename = bestFilename(put);
 
-        logger.debug(String.format("PUT local '%s' to remote '%s' (matching filename '%s')", source.getPath(), path,
+        logger.debug(String.format("PUT local '%s' to remote '%s' (matching filename '%s')", source.getPath(), destination,
                 filename));
         setup();
-        Path normalized = normalize(path);
+        Path destinationPath = new Path(destination);
 
         boolean unique = ConnectorCommandUtil.isOptionOn(put.getOptions(), Unique);
 
         try {
-            Optional<File> test = getFile(normalized);
+            Optional<File> test = getFile(destinationPath);
             if (unique && test.isPresent()) {
-                Path parent = normalized.getParent();
-                String fn = normalized.getFileName().toString();
+                Path parent = destinationPath.parent();
+                String fn = destinationPath.name();
                 int counter = 0;
                 String ext = FilenameUtils.getExtension(fn).replaceFirst("^(?=[^\\.])","."); // prefix with "." unless empty or already "."
                 String base = fn.substring(0, fn.length()-ext.length());
@@ -199,15 +184,15 @@ public class SharePointConnectorClient extends ConnectorClient {
 
                 do {
                     counter++;
-                    candidate = parent.resolve(base+"."+counter+ext);
+                    candidate = parent.child(base+"."+counter+ext);
                     test = getFile(candidate);
                 } while (test.isPresent());
-                normalized = candidate;
+                destinationPath = candidate;
             }
             if (test.isPresent()) {
-                service.updateFileContent(prefix+normalized.toString(), put.getSource().getStream());
+                service.updateFileContent(prefix+destinationPath.toString(), put.getSource().getStream());
             } else {
-                service.createFile(prefix+normalized.toString(), put.getSource().getStream());
+                service.createFile(prefix+destinationPath.toString(), put.getSource().getStream());
             }
             return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
         } catch (ServiceException e) {
@@ -215,21 +200,21 @@ public class SharePointConnectorClient extends ConnectorClient {
             System.err.println("Error Code   : " + e.getErrorCode());
             System.err.println("Error String : " + e.getErrorString());
             System.err.println("Error Request: " + e.getRequestUrl());
-            throw new ConnectorException(String.format("'%s' does not exist or is not accessible", path),
+            throw new ConnectorException(String.format("'%s' does not exist or is not accessible", destination),
                     ConnectorException.Category.fileNonExistentOrNoAccess);
         }
     }
 
-    private Optional<File> getFile(Path normalized) {
-        if (normalized.getNameCount()==0) {
+    private Optional<File> getFile(Path path) {
+        if (path.size()==0) {
             // root is a folder
             return Optional.empty();
         }
 
         // go search for it
         try {
-            List<IQueryOption> named = Collections.singletonList(new Filter(new IsEqualTo("name",normalized.getFileName().toString())));
-            List<File> files = service.getFiles(prefix+normalized.getParent().toString(), named);
+            List<IQueryOption> named = Collections.singletonList(new Filter(new IsEqualTo("name",path.name().toString())));
+            List<File> files = service.getFiles(prefix+path.parent().toString(), named);
             if (files.size() == 1) {
                 return Optional.of(files.get(0));
             } else if (files.isEmpty()) {
@@ -247,8 +232,8 @@ public class SharePointConnectorClient extends ConnectorClient {
         return Optional.empty();
     }
 
-    private Optional<Folder> getFolder(Path normalized) {
-        if (normalized.getNameCount()==0) {
+    private Optional<Folder> getFolder(Path path) {
+        if (path.size()==0) {
             // root folder
             try {
                 return Optional.of(service.getFolder(prefix));
@@ -263,8 +248,8 @@ public class SharePointConnectorClient extends ConnectorClient {
 
         // go search for it
         try {
-            List<IQueryOption> named = Collections.singletonList(new Filter(new IsEqualTo("name",normalized.getFileName().toString())));
-            List<Folder> folders = service.getFolders(prefix+normalized.getParent().toString(), named);
+            List<IQueryOption> named = Collections.singletonList(new Filter(new IsEqualTo("name",path.name().toString())));
+            List<Folder> folders = service.getFolders(prefix+path.parent().toString(), named);
             if (folders.size() == 1) {
                 return Optional.of(folders.get(0));
             } else if (folders.isEmpty()) {
@@ -285,7 +270,7 @@ public class SharePointConnectorClient extends ConnectorClient {
     /**
      * Get the file attribute view associated with a file path
      * 
-     * @param path the file path
+     * @param source the file path
      * @return the file attributes
      * @throws ServiceException 
      * @throws com.cleo.connector.api.ConnectorException
@@ -295,23 +280,23 @@ public class SharePointConnectorClient extends ConnectorClient {
      * @throws InvalidKeyException 
      */
     @Command(name = ATTR)
-    public BasicFileAttributeView getAttributes(String path) throws ConnectorException, ServiceException {
-        logger.debug(String.format("ATTR '%s'", path));
+    public BasicFileAttributeView getAttributes(String source) throws ConnectorException, ServiceException {
+        logger.debug(String.format("ATTR '%s'", source));
         setup();
-        if (path.equals(".")) path = ""; // TODO: remove when Harmony is fixed
-        Path normalized = normalize(path);
+        if (source.equals(".")) source = ""; // TODO: remove when Harmony is fixed
+        Path sourcePath = new Path(source);
 
         Optional<BasicFileAttributeView> attr = Optional.empty();
         try {
-            attr = AttrCache.get(clientkey, normalized, new Callable<Optional<BasicFileAttributeView>>() {
+            attr = AttrCache.get(clientkey, sourcePath, new Callable<Optional<BasicFileAttributeView>>() {
                 @Override
                 public Optional<BasicFileAttributeView> call() {
-                    logger.debug(String.format("fetching attributes for '%s'", normalized.toString()));
-                    Optional<File> file = getFile(normalized);
+                    logger.debug(String.format("fetching attributes for '%s'", sourcePath.toString()));
+                    Optional<File> file = getFile(sourcePath);
                     if (file.isPresent()) {
                         return Optional.of(new SharePointFileAttributes(file.get(), logger));
                     }
-                    Optional<Folder> folder = getFolder(normalized);
+                    Optional<Folder> folder = getFolder(sourcePath);
                     if (folder.isPresent()) {
                         return Optional.of(new SharePointFolderAttributes(folder.get(), logger));
                     }
@@ -319,63 +304,63 @@ public class SharePointConnectorClient extends ConnectorClient {
                 }
             });
         } catch (Exception e) {
-            throw new ConnectorException(String.format("error getting attributes for '%s'", path), e);
+            throw new ConnectorException(String.format("error getting attributes for '%s'", source), e);
         }
         if (attr.isPresent()) {
             return attr.get();
         } else {
-            throw new ConnectorException(String.format("'%s' does not exist or is not accessible", path),
+            throw new ConnectorException(String.format("'%s' does not exist or is not accessible", source),
                     ConnectorException.Category.fileNonExistentOrNoAccess);
         }
     }
 
     @Command(name = DELETE)
     public ConnectorCommandResult delete(OtherCommand delete) throws ConnectorException {
-        String path = delete.getSource();
-        logger.debug(String.format("DELETE '%s'", path));
+        String source = delete.getSource();
+        logger.debug(String.format("DELETE '%s'", source));
         setup();
-        Path normalized = normalize(path);
+        Path sourcePath = new Path(source);
 
         try {
-            service.deleteFile(prefix+normalized.toString());
-            AttrCache.invalidate(clientkey, normalized);
+            service.deleteFile(prefix+sourcePath.toString());
+            AttrCache.invalidate(clientkey, sourcePath);
             return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
         } catch (ServiceException e) {
-            throw new ConnectorException(String.format("'%s' does not exist or is not accessible", path),
+            throw new ConnectorException(String.format("'%s' does not exist or is not accessible", source),
                     ConnectorException.Category.fileNonExistentOrNoAccess);
         }
     }
 
     @Command(name = MKDIR)
     public ConnectorCommandResult mkdir(OtherCommand mkdir) throws ConnectorException {
-        String path = mkdir.getSource();
-        logger.debug(String.format("MKDIR '%s'", path));
+        String source = mkdir.getSource();
+        logger.debug(String.format("MKDIR '%s'", source));
         setup();
-        if (path.equals(".")) path = ""; // TODO: remove when Harmony is fixed
-        Path normalized = normalize(path);
+        if (source.equals(".")) source = ""; // TODO: remove when Harmony is fixed
+        Path sourcePath = new Path(source);
 
         try {
-            service.createFolder(prefix+normalized.toString());
+            service.createFolder(prefix+sourcePath.toString());
             return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
         } catch (ServiceException e) {
-            throw new ConnectorException("MKDIR cannot create folder "+path, e);
+            throw new ConnectorException("MKDIR cannot create folder "+source, e);
         }
     }
 
     @Command(name = RMDIR)
     public ConnectorCommandResult rmdir(OtherCommand mkdir) throws ConnectorException {
-        String path = mkdir.getSource();
-        logger.debug(String.format("RMDIR '%s'", path));
+        String source = mkdir.getSource();
+        logger.debug(String.format("RMDIR '%s'", source));
         setup();
-        if (path.equals(".")) path = ""; // TODO: remove when Harmony is fixed
-        Path normalized = normalize(path);
+        if (source.equals(".")) source = ""; // TODO: remove when Harmony is fixed
+        Path sourcePath = new Path(source);
 
         try {
-            service.deleteFolder(prefix+normalized.toString());
-            AttrCache.invalidate(clientkey, normalized);
+            service.deleteFolder(prefix+sourcePath.toString());
+            AttrCache.invalidate(clientkey, sourcePath);
             return new ConnectorCommandResult(ConnectorCommandResult.Status.Success);
         } catch (ServiceException e) {
-            throw new ConnectorException("RMDIR cannot delete folder "+path, e);
+            throw new ConnectorException("RMDIR cannot delete folder "+source, e);
         }
     }
 
@@ -385,8 +370,8 @@ public class SharePointConnectorClient extends ConnectorClient {
         String destination = rename.getDestination();
         logger.debug(String.format("RENAME '%s' '%s'", source, destination));
         setup();
-        Path sourcePath = normalize(source);
-        Path destinationPath = normalize(destination);
+        Path sourcePath = new Path(source);
+        Path destinationPath = new Path(destination);
 
         Optional<File> sourceFile = getFile(sourcePath);
         try {

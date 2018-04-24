@@ -1,6 +1,5 @@
 package com.cleo.labs.connector.sharepoint;
 
-import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.util.Optional;
 import java.util.concurrent.Callable;
